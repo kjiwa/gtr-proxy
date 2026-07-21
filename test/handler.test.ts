@@ -8,6 +8,9 @@ import {
   handleRequest,
   validGoogleTakeoutUrl,
   validTestServerURL,
+  checkProxyToken,
+  timingSafeEqual,
+  PROXY_TOKEN_PARAM,
 } from '../src/handler'
 import {
   azBlobSASUrlToProxyPathname,
@@ -336,5 +339,161 @@ describe('url-parser', () => {
     )
     const url = proxyPathnameToAzBlobSASUrl(path)
     expect(url).toEqual(real_azb_url)
+  })
+})
+
+describe('timingSafeEqual', () => {
+  test('returns true for identical strings', () => {
+    expect(timingSafeEqual('correct-token', 'correct-token')).toBe(true)
+  })
+
+  test('returns false for different strings of the same length', () => {
+    expect(timingSafeEqual('correct-token', 'wr0ng-t0ken!!')).toBe(false)
+  })
+
+  test('returns false for strings of different lengths', () => {
+    expect(timingSafeEqual('short', 'a-lot-longer')).toBe(false)
+  })
+
+  test('returns true for two empty strings', () => {
+    expect(timingSafeEqual('', '')).toBe(true)
+  })
+})
+
+describe('checkProxyToken', () => {
+  afterEach(() => {
+    delete (globalThis as any).GTR_TOKEN
+  })
+
+  test('allows the request through when no token is configured', () => {
+    const url = new URL('https://example.com/version/')
+    expect(checkProxyToken(url)).toBeNull()
+  })
+
+  test('rejects a request missing the token when one is configured', () => {
+    ;(globalThis as any).GTR_TOKEN = 'my-secret'
+    const url = new URL('https://example.com/version/')
+    const result = checkProxyToken(url)
+    expect(result).not.toBeNull()
+    expect(result?.status).toEqual(403)
+  })
+
+  test('rejects a request with the wrong token', () => {
+    ;(globalThis as any).GTR_TOKEN = 'my-secret'
+    const url = new URL(`https://example.com/version/?${PROXY_TOKEN_PARAM}=wrong`)
+    const result = checkProxyToken(url)
+    expect(result?.status).toEqual(403)
+  })
+
+  test('allows a request with the correct token', () => {
+    ;(globalThis as any).GTR_TOKEN = 'my-secret'
+    const url = new URL(`https://example.com/version/?${PROXY_TOKEN_PARAM}=my-secret`)
+    expect(checkProxyToken(url)).toBeNull()
+  })
+})
+
+describe('proxy token enforcement in handleRequest', () => {
+  afterEach(() => {
+    delete (globalThis as any).GTR_TOKEN
+    vi.restoreAllMocks()
+  })
+
+  test('rejects any route when a token is required but missing', async () => {
+    ;(globalThis as any).GTR_TOKEN = 'my-secret'
+    const result = await handleRequest(
+      new Request('https://example.com/version/', { method: 'GET' }),
+    )
+    expect(result.status).toEqual(403)
+  })
+
+  test('rejects the catch-all redirect route too, once a token is required', async () => {
+    ;(globalThis as any).GTR_TOKEN = 'my-secret'
+    const result = await handleRequest(
+      new Request('https://example.com/', { method: 'GET' }),
+    )
+    expect(result.status).toEqual(403)
+  })
+
+  test('allows /version/ through with the correct token', async () => {
+    ;(globalThis as any).GTR_TOKEN = 'my-secret'
+    const result = await handleRequest(
+      new Request(
+        `https://example.com/version/?${PROXY_TOKEN_PARAM}=my-secret`,
+        { method: 'GET' },
+      ),
+    )
+    expect(result.status).toEqual(200)
+  })
+
+  test('strips the token before forwarding a /p/ request to Google', async () => {
+    ;(globalThis as any).GTR_TOKEN = 'my-secret'
+    global.fetch = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
+
+    const result = await handleRequest(
+      new Request(
+        `https://example.com/p/put-block-from-url-esc-issue-demo-server-3vngqvvpoq-uc.a.run.app/red/blue.txt?a=dummy&${PROXY_TOKEN_PARAM}=my-secret`,
+        { method: 'GET' },
+      ),
+    )
+
+    expect(result.status).toEqual(200)
+    const fetchCalls = (global.fetch as any).mock.calls
+    expect(fetchCalls.length).toBeGreaterThan(0)
+    const [fetchedUrl] = fetchCalls[0]
+    expect(fetchedUrl.toString()).not.toContain(PROXY_TOKEN_PARAM)
+  })
+
+  test('strips the token before forwarding a /p-azb/ request to Azure', async () => {
+    ;(globalThis as any).GTR_TOKEN = 'my-secret'
+    global.fetch = vi.fn().mockResolvedValue(new Response('', { status: 201 }))
+
+    const result = await handleRequest(
+      new Request(
+        `https://example.com/p-azb/urlcopytest/some-container/some_file.dat?sp=racwd&${PROXY_TOKEN_PARAM}=my-secret`,
+        { method: 'PUT' },
+      ),
+    )
+
+    expect(result.status).toEqual(201)
+    const fetchCalls = (global.fetch as any).mock.calls
+    expect(fetchCalls.length).toBeGreaterThan(0)
+    const [fetchedUrl] = fetchCalls[0]
+    expect(fetchedUrl.toString()).not.toContain(PROXY_TOKEN_PARAM)
+  })
+})
+
+describe('azure storage account allowlist', () => {
+  afterEach(() => {
+    delete (globalThis as any).GTR_ALLOWED_AZ_ACCOUNT
+    vi.restoreAllMocks()
+  })
+
+  test('allows the configured account through', async () => {
+    ;(globalThis as any).GTR_ALLOWED_AZ_ACCOUNT = 'urlcopytest'
+    global.fetch = vi.fn().mockResolvedValue(new Response('', { status: 201 }))
+
+    const result = await handleRequest(
+      new Request(
+        'https://example.com/p-azb/urlcopytest/some-container/some_file.dat?sp=racwd',
+        { method: 'PUT' },
+      ),
+    )
+
+    expect(result.status).toEqual(201)
+  })
+
+  test('rejects any other account', async () => {
+    ;(globalThis as any).GTR_ALLOWED_AZ_ACCOUNT = 'urlcopytest'
+    global.fetch = vi.fn().mockResolvedValue(new Response('', { status: 201 }))
+
+    const result = await handleRequest(
+      new Request(
+        'https://example.com/p-azb/someone-elses-account/some-container/some_file.dat?sp=racwd',
+        { method: 'PUT' },
+      ),
+    )
+
+    expect(result.status).toEqual(403)
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 })

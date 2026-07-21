@@ -1,8 +1,50 @@
 import { proxyPathnameToAzBlobSASUrl } from './azb'
 import { decodeState } from './state_compression';
 
+// Query parameter carrying an optional pre-shared auth token. Present on
+// every request once a client (e.g. the GTR extension) is configured with a
+// token; stripped before any request is forwarded upstream so it never
+// reaches Google or Azure.
+export const PROXY_TOKEN_PARAM = 'gtr_token'
+
+// Compares two strings in constant time relative to their (equal) length, so
+// a mismatching token can't be distinguished by how many leading characters
+// happened to match.
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false
+  }
+  let mismatch = 0
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return mismatch === 0
+}
+
+// Rejects the request if this instance is configured to require a
+// pre-shared token (via the GTR_TOKEN binding) and the request doesn't carry
+// a matching one. Returns null when the request may proceed: either no
+// token is configured (the proxy is open, as it was before this feature
+// existed) or the caller supplied the right one.
+export function checkProxyToken(url: URL): Response | null {
+  const requiredToken = (globalThis as { GTR_TOKEN?: string }).GTR_TOKEN
+  if (!requiredToken) {
+    return null
+  }
+  const provided = url.searchParams.get(PROXY_TOKEN_PARAM)
+  if (!provided || !timingSafeEqual(provided, requiredToken)) {
+    return new Response('forbidden', { status: 403 })
+  }
+  return null
+}
+
 export async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
+
+  const tokenRejection = checkProxyToken(url)
+  if (tokenRejection) {
+    return tokenRejection
+  }
 
   if (url.pathname.startsWith('/p/')) {
     return handleProxyToGoogleTakeoutRequest(request)
@@ -80,6 +122,9 @@ export async function handleProxyToGoogleTakeoutRequest(
   }
   // Remove the 'a' parameter from the URL before fetching
   extracted_url.searchParams.delete('a');
+  // Also remove the proxy auth token, if present, so it isn't leaked to
+  // Google as part of the forwarded URL.
+  extracted_url.searchParams.delete(PROXY_TOKEN_PARAM);
 
   if (
     !(validGoogleTakeoutUrl(extracted_url) || validTestServerURL(extracted_url))
@@ -124,8 +169,25 @@ export async function handleProxyToGoogleTakeoutRequest(
 
 export async function handleProxyToAzStorageRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
+  // Remove the proxy auth token, if present, so it isn't leaked to Azure as
+  // part of the forwarded query string.
+  url.searchParams.delete(PROXY_TOKEN_PARAM);
   try {
     const azUrl = proxyPathnameToAzBlobSASUrl(url)
+
+    // If this instance is locked to a specific storage account (via the
+    // GTR_ALLOWED_AZ_ACCOUNT binding), reject anything else. Without this,
+    // any caller who can reach this proxy -- and, absent a proxy token,
+    // that's anyone -- can relay to an Azure storage account of their own
+    // choosing, using a SAS token they supply themselves.
+    const allowedAccount = (globalThis as { GTR_ALLOWED_AZ_ACCOUNT?: string }).GTR_ALLOWED_AZ_ACCOUNT
+    if (allowedAccount && azUrl.hostname !== `${allowedAccount}.blob.core.windows.net`) {
+      console.log('Azure storage account not allowed')
+      return new Response('azure storage account not allowed', {
+        status: 403,
+      })
+    }
+
     const originalResponse = await fetch(azUrl.toString(), {
       method: request.method,
       headers: request.headers,
