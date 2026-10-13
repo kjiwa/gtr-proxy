@@ -42,7 +42,7 @@ export async function deriveKey(secret: string): Promise<CryptoKey> {
 }
 
 async function transform(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
-  const output = new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(stream));
+  const output = new Response(new Response(bytes).body!.pipeThrough(stream));
   return new Uint8Array(await output.arrayBuffer());
 }
 
