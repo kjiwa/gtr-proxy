@@ -1,6 +1,3 @@
-dist
 node_modules
-transpiled
-/.idea/
-.envrc
-.env
+.dev.vars
+.wrangler
