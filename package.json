@@ -39,5 +39,10 @@
         "description": "Shared secret for the GTR extension. Generate with: openssl rand -base64 32 | tr \"+/\" \"-_\" | tr -d \"=\". Paste the same value into the extension settings."
       }
     }
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "workerd": true,
+    "fsevents": false
   }
 }
