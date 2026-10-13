@@ -1,5 +1,6 @@
 import { errorResponse } from "./http";
-import { azure, health, takeout } from "./routes";
+import { RELAY_PREFIX } from "./azure";
+import { azure, health, takeout, TICKET_PREFIX } from "./routes";
 
 type Handler = (request: Request, env: Env, url: URL) => Response | Promise<Response>;
 
@@ -13,8 +14,8 @@ interface Route {
 
 const ROUTES: Route[] = [
   { name: "health", matches: (path) => path === "/health", methods: ["GET"], bearer: true, handler: health },
-  { name: "takeout", matches: (path) => path.startsWith("/t/") && path.length > 3, methods: ["GET", "HEAD"], bearer: false, handler: takeout },
-  { name: "azure", matches: (path) => path.startsWith("/azure/"), methods: ["PUT"], bearer: true, handler: azure },
+  { name: "takeout", matches: (path) => path.startsWith(TICKET_PREFIX) && path.length > TICKET_PREFIX.length, methods: ["GET", "HEAD"], bearer: false, handler: takeout },
+  { name: "azure", matches: (path) => path.startsWith(RELAY_PREFIX), methods: ["PUT"], bearer: true, handler: azure },
 ];
 
 const encoder = new TextEncoder();

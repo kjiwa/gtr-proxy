@@ -3,21 +3,19 @@ interface TakeoutRule {
   pathPrefixes: string[];
 }
 
-const SUBDOMAINS = "(?:[a-z0-9-]+\\.)*";
-
 // Takeout download hosts carry a hash prefix joined by a hyphen, e.g. <hex>-apidata.googleusercontent.com.
 const RULES: TakeoutRule[] = [
   {
-    host: new RegExp(`^${SUBDOMAINS}(?:[0-9a-f]+-)?apidata\\.googleusercontent\\.com$`),
+    host: /^(?:[0-9a-f]+-)?apidata\.googleusercontent\.com$/,
     pathPrefixes: ["/download/storage/v1/b/dataliberation/o/", "/download/storage/v1/b/takeout"],
   },
   {
-    host: new RegExp(`^${SUBDOMAINS}storage\\.googleapis\\.com$`),
+    host: /^storage\.googleapis\.com$/,
     pathPrefixes: ["/takeout-"],
   },
   {
-    host: new RegExp(`^${SUBDOMAINS}(?:takeout\\.google\\.com|takeout-download\\.usercontent\\.google\\.com)$`),
-    pathPrefixes: ["/takeout/download", "/download"],
+    host: /^(?:takeout\.google\.com|takeout-download\.usercontent\.google\.com)$/,
+    pathPrefixes: ["/takeout/download", "/download/"],
   },
 ];
 

@@ -48,6 +48,9 @@ async function fetchTakeout(url: string, headers: Headers): Promise<Response | n
     if (!next || !isTakeoutUrl(next)) {
       return null;
     }
+    if (new URL(next).hostname !== new URL(target).hostname) {
+      headers.delete("Cookie");
+    }
     target = next;
   }
   return null;
@@ -82,11 +85,11 @@ export async function takeout(request: Request, env: Env, url: URL): Promise<Res
   if (!upstream) {
     return errorResponse(502, "upstream_redirect", "Google Takeout redirected to an unexpected location.");
   }
-  if (request.method === "HEAD") {
+  const headOnly = request.method === "HEAD";
+  if (headOnly) {
     await upstream.body?.cancel();
-    return new Response(null, { status: upstream.status, headers: filterHeaders(upstream.headers, (name) => TAKEOUT_RESPONSE_HEADERS.has(name)) });
   }
-  return new Response(upstream.body, { status: upstream.status, headers: filterHeaders(upstream.headers, (name) => TAKEOUT_RESPONSE_HEADERS.has(name)) });
+  return new Response(headOnly ? null : upstream.body, { status: upstream.status, headers: filterHeaders(upstream.headers, (name) => TAKEOUT_RESPONSE_HEADERS.has(name)) });
 }
 
 function azureRequestHeaders(request: Request): Headers {

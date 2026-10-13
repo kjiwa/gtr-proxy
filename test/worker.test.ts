@@ -192,6 +192,20 @@ describe("/t/<ticket>", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("drops the cookie when a redirect changes host", async () => {
+    const cookies: (string | null)[] = [];
+    fetchSpy.mockImplementation(async (_input, init) => {
+      cookies.push(new Headers(init?.headers).get("cookie"));
+      if (cookies.length > 1) {
+        return new Response("ok");
+      }
+      return new Response(null, { status: 302, headers: { location: "https://takeout-download.usercontent.google.com/download/x" } });
+    });
+    const response = await call(`/t/${await ticketFor(TAKEOUT_URL)}`);
+    expect(response.status).toBe(200);
+    expect(cookies).toEqual(["SID=abc", null]);
+  });
+
   it("502s when the upstream fetch throws", async () => {
     fetchSpy.mockRejectedValue(new TypeError("network"));
     const response = await call(`/t/${await ticketFor(TAKEOUT_URL)}`);
