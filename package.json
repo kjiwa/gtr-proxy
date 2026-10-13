@@ -32,5 +32,12 @@
     "typescript-eslint": "^8.71.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.149.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "GTR_SECRET": {
+        "description": "Shared secret for the GTR extension. Generate with: openssl rand -base64 32 | tr \"+/\" \"-_\" | tr -d \"=\". Paste the same value into the extension settings."
+      }
+    }
   }
 }
