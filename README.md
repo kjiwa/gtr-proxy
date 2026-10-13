@@ -74,18 +74,19 @@ I am not aware of any other provider with the same characteristics as Cloudflare
 Google Takeout requires requests to be authenticated with cookies. This proxy supports passing these cookies.
 
 The client (e.g., the GTR extension) must:
+
 1.  Capture the required google.com cookies from the Google Takeout session.
 2.  Compress the cookie string using zlib (deflate).
 3.  Base64 encode the compressed data.
 4.  Append the encoded string as the `a` query parameter to the proxied URL.
 
 The proxy then:
+
 1.  Decodes the base64 string.
 2.  Decompresses the zlib data.
 3.  Injects the cookies into the `Cookie` header of the upstream request to Google.
 
 **Note:** This mechanism is handled automatically by the GTR extension.
-
 
 ```mermaid
 graph LR
@@ -95,7 +96,6 @@ graph LR
   B --3. Download from CF Worker.-> C[Azure Storage]
   Browser -- 1. Control CF Worker / Azure Storage Signed SAS.-> B
 ```
-
 
 [cf_capacity]: https://www.peeringdb.com/asn/13335
 [fetch_free]: https://blog.cloudflare.com/workers-optimization-reduces-your-bill/

@@ -1,16 +1,15 @@
-import pako from 'pako';
-import { decodeState } from '../src/state_compression';
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from "vitest";
+import { decodeState } from "../src/state_compression";
 
-describe('State Compression', () => {
-  it('test encoded cookies can be decoded by decodeState', () => {
-    const cookies = "A=123; B=456"
-    const compressedData = pako.gzip(cookies);
-    const b64encoded_string = btoa(
-      String.fromCharCode(...new Uint8Array(compressedData))
-    );
+async function gzipBase64(text: string): Promise<string> {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  return btoa(String.fromCharCode(...bytes));
+}
 
-    const decodedState = decodeState(b64encoded_string);
-    expect(decodedState).toBe(cookies);
+describe("State Compression", () => {
+  it("test encoded cookies can be decoded by decodeState", async () => {
+    const cookies = "A=123; B=456";
+    expect(await decodeState(await gzipBase64(cookies))).toBe(cookies);
   });
 });
